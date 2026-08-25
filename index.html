@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>This Is The Only Level - Web Edition</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        #game-container {
+            text-align: center;
+            border: 4px solid #444;
+            background-color: #111;
+            padding: 10px;
+            box-shadow: 0px 0px 20px rgba(0,0,0,0.8);
+        }
+        canvas {
+            background-color: #222;
+            display: block;
+            border: 2px solid #555;
+        }
+        .ui-panel {
+            margin-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            width: 800px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="ui-panel">
+        <span id="stage-title">Estágio 1: O Início</span>
+        <span id="stage-counter">Estágio 1 / 4</span>
+    </div>
+    <canvas id="gameCanvas" width="800" height="450"></canvas>
+    <p style="font-size: 12px; color: #888; margin-top: 5px;">Use as Setas / WASD para mover o elefante. Pressione o botão vermelho e vá até o tubo laranja!</p>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// Elementos de UI
+const stageTitleEl = document.getElementById("stage-title");
+const stageCounterEl = document.getElementById("stage-counter");
+
+// Configuração do jogo e fases
+let currentStage = 1;
+const totalStages = 4;
+
+const stagesInfo = [
+    { title: "Estágio 1: O Básico", desc: "Pressione o botão vermelho e entre no tubo." },
+    { title: "Estágio 2: Controles Invertidos", desc: "Esquerda é Direita, Direita é Esquerda!" },
+    { title: "Estágio 3: Gravidade Lunar", desc: "Cuidado para não voar alto demais." },
+    { title: "Estágio 4: Chão Falso", desc: "O botão não abre a porta... ou será que abre?" }
+];
+
+// Estado do Jogador (O Elefante)
+let player = {
+    x: 100,
+    y: 330,
+    width: 40,
+    height: 30,
+    vx: 0,
+    vy: 0,
+    speed: 4,
+    jumpForce: -10,
+    gravity: 0.5,
+    grounded: false,
+    color: "#888888"
+};
+
+// Elementos fixos do mapa único
+let button = { x: 380, y: 340, width: 40, height: 20, pressed: false };
+let wall = { x: 650, y: 260, width: 20, height: 110, open: false };
+let pipe = { x: 720, y: 310, width: 50, height: 60 };
+
+let spikes = [
+    { x: 0, y: 370, width: 800, height: 30 } // Espinhos no chão (exceto nas bases)
+];
+
+// Controles de Teclado
+let keys = {};
+window.addEventListener("keydown", (e) => { keys[e.code] = true; });
+window.addEventListener("keyup", (e) => { keys[e.code] = false; });
+
+function resetLevel() {
+    player.x = 100;
+    player.y = 330;
+    player.vx = 0;
+    player.vy = 0;
+    player.gravity = 0.5;
+    button.pressed = false;
+    wall.open = false;
+
+    // Modificadores por estágio
+    if (currentStage === 3) {
+        player.gravity = 0.2; // Gravidade baixa
+    }
+}
+
+function update() {
+    // Resetar forças
+    player.vx = 0;
+
+    let leftKey = keys["ArrowLeft"] || keys["KeyA"];
+    let rightKey = keys["ArrowRight"] || keys["KeyD"];
+    let jumpKey = keys["ArrowUp"] || keys["KeyW"] || keys["Space"];
+
+    // Modificador Estágio 2: Controles Invertidos
+    if (currentStage === 2) {
+        let temp = leftKey;
+        leftKey = rightKey;
+        rightKey = temp;
+    }
+
+    if (leftKey) {
+        player.vx = -player.speed;
+    }
+    if (rightKey) {
+        player.vx = player.speed;
+    }
+
+    // Pulo
+    if (jumpKey && player.grounded) {
+        player.vy = currentStage === 3 ? -7 : player.jumpForce;
+        player.grounded = false;
+    }
+
+    // Aplicar gravidade
+    player.vy += player.gravity;
+
+    // Movimento X e colisão com paredes da tela
+    player.x += player.vx;
+    if (player.x < 50) player.x = 50;
+    if (player.x > 750 - player.width) player.x = 750 - player.width;
+
+    // Movimento Y e colisão com o chão
+    player.y += player.vy;
+    let floorY = 340;
+    
+    if (player.y >= floorY) {
+        player.y = floorY;
+        player.vy = 0;
+        player.grounded = true;
+    }
+
+    // Colisão com a parede de blocos verde (se não estiver aberta)
+    if (!wall.open && player.x + player.width > wall.x && player.x < wall.x + wall.width) {
+        if (player.y + player.height > wall.y) {
+            player.x -= player.vx; // Bloqueia movimento horizontal
+        }
+    }
+
+    // Interação com o Botão Vermelho
+    if (player.x < button.x + button.width && player.x + player.width > button.x &&
+        player.y + player.height >= button.y) {
+        button.pressed = true;
+        if (currentStage !== 4) {
+            wall.open = true; // Abre a parede nos estágios normais
+        }
+    }
+
+    // Modificador Estágio 4: O botão não abre, mas tocar no tubo abre direto ou passar direto resolve
+    if (currentStage === 4 && button.pressed) {
+        wall.open = false; // Engana o jogador, o muro continua fechado pelo botão convencional
+        // No estágio 4, o jogador precisa pular a parede ou o muro abre sozinho após alguns segundos
+        setTimeout(() => { wall.open = true; }, 2000);
+    }
+
+    // Condição de Vitória (Entrar no Tubo)
+    if (wall.open && player.x + player.width > pipe.x && player.x < pipe.x + pipe.width && player.y + player.height >= pipe.y) {
+        nextStage();
+    }
+
+    // Morte por espinhos (buracos simulados ou encostar embaixo)
+    // No layout, há espinhos na parte inferior base
+}
+
+function nextStage() {
+    currentStage++;
+    if (currentStage > totalStages) {
+        alert("Parabéns! Você completou 'This Is The Only Level'!");
+        currentStage = 1;
+    }
+    stageTitleEl.innerText = stagesInfo[currentStage - 1].title;
+    stageCounterEl.innerText = `Estágio ${currentStage} / ${totalStages}`;
+    resetLevel();
+}
+
+function draw() {
+    // Limpar tela
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Desenhar Cenário Fixo (Plataforma e Padrão de Fundo)
+    ctx.fillStyle = "#333";
+    ctx.fillRect(50, 370, 700, 20); // Chão principal
+
+    // Espinhos decorativos no chão
+    ctx.fillStyle = "#ff4444";
+    for (let i = 60; i < 740; i += 20) {
+        ctx.beginPath();
+        ctx.moveTo(i, 390);
+        ctx.lineTo(i + 10, 370);
+        ctx.lineTo(i + 20, 390);
+        ctx.fill();
+    }
+
+    // Botão Vermelho
+    ctx.fillStyle = button.pressed ? "#880000" : "#ff0000";
+    ctx.fillRect(button.x, button.y + (button.pressed ? 10 : 0), button.width, button.height - (button.pressed ? 10 : 0));
+
+    // Parede/Porta de Bloqueio (Verde)
+    if (!wall.open) {
+        ctx.fillStyle = "#00aa00";
+        ctx.fillRect(wall.x, wall.y, wall.width, wall.height);
+    }
+
+    // Tubo de Saída (Laranja)
+    ctx.fillStyle = "#ff8800";
+    ctx.fillRect(pipe.x, pipe.y, pipe.width, pipe.height);
+    ctx.fillStyle = "#cc6600";
+    ctx.fillRect(pipe.x - 5, pipe.y, pipe.width + 10, 15); // Borda do cano
+
+    // Desenhar o Elefante (Personagem principal simplificado com orelha e tromba)
+    ctx.fillStyle = player.color;
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+    
+    // Detalhes do Elefante (Olho e Tromba)
+    ctx.fillStyle = "#000";
+    ctx.fillRect(player.x + 25, player.y + 8, 4, 4); // Olho
+    ctx.fillRect(player.x + 35, player.y + 15, 10, 6); // Tromba
+
+    // Instrução Dinâmica na Tela
+    ctx.fillStyle = "#888";
+    ctx.font = "14px 'Courier New'";
+    ctx.fillText(stagesInfo[currentStage - 1].desc, 50, 50);
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+// Iniciar o jogo
+resetLevel();
+loop();
+</script>
+
+</body>
+</html>
